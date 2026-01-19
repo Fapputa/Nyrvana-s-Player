@@ -1,66 +1,248 @@
-# Nyrvana-s-Player
-A fully customisable music player free and offline
-this player is very light with ressources such as processor and ram, and also portative
+# 🎵 NyrvanaPlayer
 
-How to install ?
+A modern, customizable music player built with PyQt6 and pygame, featuring real-time audio visualization and integrated YouTube downloader with automatic MP3/GIF conversion.
 
-## For Windows:
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 
-1. go and download the zip file in this link:
-- https://drive.google.com/file/d/11otCrAWe_5BCZYYOBAmRYR71ZGPWO6Zo/view?usp=sharing
-2. unzip the file into your desktop and launch "launcher.vbs" you also can create a shortcut to execute it.
-- no need to install python or dependencies, all the needed files are in  the portative folder.
+## ✨ Features
 
+- **Custom Audio Visualizer**: Built from scratch (pydub is no longer supported in Python 3.14+)
+- **YouTube Integration**: Search and download music directly from YouTube
+- **Automatic Conversion**: MP4 to MP3 + GIF extraction via custom C converter
+- **Animated UI**: Smooth hover/click animations on all buttons
+- **Playlist Management**: Hot-reload playlist without restarting
+- **Loop Mode**: Repeat your favorite tracks
+- **Volume Control**: Smooth volume slider with visual feedback
+- **Tiled/Floating Mode**: Works in both window manager modes
+- **Custom Theming**: Fully customizable via JSON config
+- **Drag & Drop**: Frameless window with drag support
 
-## For Linux:
+## 📋 Requirements
 
-1. execute theses commands:
+### System Dependencies
 ```bash
-sudo apt update
+# Debian/Ubuntu
+sudo apt install python3-pyqt6 python3-pygame ffmpeg
+
+# Arch Linux
+sudo pacman -S python-pyqt6 python-pygame ffmpeg
+
+# Fedora
+sudo dnf install python3-PyQt6 python3-pygame ffmpeg
 ```
+
+### Python Dependencies
 ```bash
-sudo apt install python3 python3-pip
+pip install PyQt6 pygame yt-dlp
 ```
+
+### Build C Converter
 ```bash
-cd ~/Desktop/blank
+cd core
+gcc -o convert convert.c -lavcodec -lavformat -lavutil -lswscale -lswresample -lgif
 ```
 
-2. then install dependencies using pip
-- (for the pip install you can add at the end "--break-system-packages" if you dont want to fight with the external environement)
+## 🚀 Quick Start
 
-## FAQ
+### 1. Clone the repository
+```bash
+git clone https://github.com/yourusername/NyrvanaPlayer.git
+cd NyrvanaPlayer
+```
 
-- How to add music ?
-1. Click on the search icon
-2. Type the name (errors in the name allowed)
-3. Click download
+### 2. Install dependencies
+```bash
+pip install -r requirements.txt
+```
 
-- Can i use it offline ?
-1. Yes you can. All the music are downloaded from youtube when you were online,
-all your music are stored in the assets/music folder as mp3 file 
-so you can use them for other purpose 
+### 3. Launch the player
+```bash
+# Floating mode (default)
+python3 main.py
 
-- My Custom interface wont show correctly, why ?
-1. When you use a picture to customize your interface,
-and move the picture or delete it teh interface may not work.
+# Tiled mode (for tiling window managers like bspwm)
+python3 main.py --tiled
+```
 
+### 4. Download music
+```bash
+# Launch the downloader UI
+python3 research.py
+```
 
-- How to delete music ?
-1. Go into the "assets" file
-2. Then go into the "music" file
-3. finally delete the music you dont want
+## 📁 Project Structure
+```
+NyrvanaPlayer/
+├── main.py              # Main music player application
+├── research.py          # YouTube downloader UI
+├── config_ui.py         # Configuration UI (if exists)
+├── config.json          # Player configuration
+├── core/
+│   ├── convert          # C binary for MP4→MP3+GIF
+│   ├── convert.c        # C source code
+│   ├── actions.py       # Music playback controls
+│   └── visualizer.py    # Custom audio visualizer (from scratch)
+├── assets/
+│   ├── music/           # Your music library (.mp3 + .gif pairs)
+│   ├── gifs/            # UI assets (load.gif, etc.)
+│   └── images/          # Background images
+└── README.md
+```
 
-4. "a more efficient way to do it is planned"
+## 🎮 Usage
 
+### Main Player Controls
 
+| Button | Action |
+|--------|--------|
+| `➤` / `❚❚` | Play/Pause |
+| `❮❮` | Previous track |
+| `❯❯` | Next track |
+| `↻` | Toggle loop mode |
+| `♫` | Open downloader |
+| `⤷` | Reload playlist |
+| `☼` | Open config UI |
+| `—` | Minimize window |
+| `✕` | Close player |
 
-- How do i customize the interface ?
-1. Launch  the player
-2. Click on the settings logo
-3. A menu should shows up to help you customize
+### Downloader (research.py)
 
+1. Enter song title or YouTube URL
+2. Click "Download"
+3. Wait for conversion (MP4 → MP3 + GIF)
+4. Files appear in `assets/music/`
+5. Click reload (`⤷`) in main player to refresh playlist
 
-- Any recommandation of music ?
-1. Yes, go listen the soundtrack of made in abyss,
-a complete masterpiece, especially "Old stories" and "Forever Lost"
+### Progress Bar
 
+- **Click** anywhere on the progress bar to seek
+- Displays current time / total duration
+
+### Volume Slider
+
+- Drag slider or click to set volume
+- Icon changes: 🔇 (mute) ↔ 🔊 (loud)
+
+## ⚙️ Configuration
+
+Edit `config.json` to customize:
+
+- Window size and appearance
+- Button colors, shapes, sizes
+- Progress bar style
+- Volume slider appearance
+- Visualizer settings (bars, colors, intensity)
+- Animations (hover/click effects)
+- Background image/GIF
+
+**Example:**
+```json
+{
+  "window": {
+    "width": 270,
+    "height": 370,
+    "background_color": "#434343"
+  },
+  "buttons": {
+    "play": {
+      "shape": "square",
+      "color": "#955151",
+      "size": [35, 35]
+    }
+  },
+  "visualizer": {
+    "enabled": true,
+    "num_bars": 60,
+    "color_start": "#ffffff",
+    "intensity": 5.0
+  }
+}
+```
+
+## 🎨 Custom Visualizer
+
+The audio visualizer is **built from scratch** because pydub is no longer supported in Python 3.14+. 
+
+Implementation details:
+- Real-time FFT analysis using pygame mixer
+- Customizable bar count, colors, and intensity
+- Smooth animations and gradient support
+- No external audio analysis libraries required
+
+## 🔧 Troubleshooting
+
+### "Module not found" errors
+```bash
+pip install --upgrade PyQt6 pygame yt-dlp
+```
+
+### C converter fails to compile
+```bash
+# Install FFmpeg development libraries
+sudo apt install libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libgif-dev
+```
+
+### YouTube download fails
+- Check your internet connection
+- Update yt-dlp: `pip install --upgrade yt-dlp`
+- Try a different video/query
+
+### No audio output
+- Check pygame mixer initialization
+- Verify audio files are valid MP3 format
+- Check system volume settings
+
+### GIF not displaying
+- Ensure `.gif` file has same name as `.mp3` (excluding extension)
+- Example: `song.mp3` + `song.gif`
+
+## 🐛 Known Issues
+
+- `.webm.part` files (incomplete downloads) won't play - delete them manually
+- Very long track names may overflow UI elements
+- GIF playback may lag on low-end systems
+
+## 🛠️ Development
+
+### Adding new features
+
+1. **New button**: Edit `config.json` → Add to `setup_ui()` in `main.py`
+2. **Custom action**: Add function to `core/actions.py`
+3. **Visualizer effect**: Modify `core/visualizer.py`
+
+### Testing
+```bash
+# Run with debug output
+python3 main.py --tiled
+
+# Test converter
+./core/convert path/to/video.mp4
+```
+
+## 📝 License
+
+MIT License - Feel free to modify and distribute
+
+## 🤝 Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Submit a pull request
+
+## 💡 Tips
+
+- Keep music files organized in `assets/music/`
+- Use descriptive filenames for better playlist readability
+- Pair each `.mp3` with a `.gif` for visual feedback
+- Adjust visualizer intensity for different music genres
+- Use tiled mode (`--tiled`) with bspwm, i3, or similar WMs
+
+## 📧 Support
+
+For issues or questions, please open a GitHub issue.
+
+---
+
+**Made with ❤️ and Python**

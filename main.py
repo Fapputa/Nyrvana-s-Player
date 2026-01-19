@@ -2,12 +2,13 @@ import sys
 import os
 import json
 import subprocess
+import argparse
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QLabel, QProgressBar, QListWidget, QSlider
 )
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QSize
+from PyQt6.QtGui import QPixmap, QFont, QMovie
 from core.actions import (
     load_playlist_from_folder, play_music, pause_music, stop_music,
     load_track_by_index, get_current_position_ms, get_current_track_duration_ms,
@@ -30,14 +31,106 @@ def load_config(path="config.json") -> dict:
         return json.load(f)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description='Lecteur de musique')
+    parser.add_argument('--tiled', action='store_true', help='Mode fenêtre tiled (non flottante)')
+    return parser.parse_args()
+
+
+class AnimatedButton(QPushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._base_width = None
+        self._base_height = None
+        self._animations = []
+        
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self._base_width is None:
+            self._base_width = self.width()
+            self._base_height = self.height()
+        
+    def enterEvent(self, event):
+        if self._base_width is None:
+            self._base_width = self.width()
+            self._base_height = self.height()
+        
+        new_w = int(self._base_width * 1.15)
+        new_h = int(self._base_height * 1.15)
+        self.animate_size(new_w, new_h, 120)
+        super().enterEvent(event)
+        
+    def leaveEvent(self, event):
+        if self._base_width is not None:
+            self.animate_size(self._base_width, self._base_height, 120)
+        super().leaveEvent(event)
+        
+    def mousePressEvent(self, event):
+        if self._base_width is None:
+            self._base_width = self.width()
+            self._base_height = self.height()
+        
+        new_w = int(self._base_width * 0.9)
+        new_h = int(self._base_height * 0.9)
+        self.animate_size(new_w, new_h, 80)
+        super().mousePressEvent(event)
+        
+    def mouseReleaseEvent(self, event):
+        if self._base_width is not None:
+            if self.underMouse():
+                new_w = int(self._base_width * 1.15)
+                new_h = int(self._base_height * 1.15)
+            else:
+                new_w = self._base_width
+                new_h = self._base_height
+            self.animate_size(new_w, new_h, 80)
+        super().mouseReleaseEvent(event)
+    
+    def animate_size(self, target_w, target_h, duration):
+        for anim in self._animations:
+            if anim and anim.state() == QPropertyAnimation.State.Running:
+                anim.stop()
+        self._animations.clear()
+        
+        anim_w = QPropertyAnimation(self, b"maximumWidth")
+        anim_w.setDuration(duration)
+        anim_w.setStartValue(self.width())
+        anim_w.setEndValue(target_w)
+        anim_w.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        anim_h = QPropertyAnimation(self, b"maximumHeight")
+        anim_h.setDuration(duration)
+        anim_h.setStartValue(self.height())
+        anim_h.setEndValue(target_h)
+        anim_h.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        anim_minw = QPropertyAnimation(self, b"minimumWidth")
+        anim_minw.setDuration(duration)
+        anim_minw.setStartValue(self.width())
+        anim_minw.setEndValue(target_w)
+        anim_minw.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        anim_minh = QPropertyAnimation(self, b"minimumHeight")
+        anim_minh.setDuration(duration)
+        anim_minh.setStartValue(self.height())
+        anim_minh.setEndValue(target_h)
+        anim_minh.setEasingCurve(QEasingCurve.Type.OutCubic)
+        
+        self._animations = [anim_w, anim_h, anim_minw, anim_minh]
+        
+        for anim in self._animations:
+            anim.start()
+
+
 class MusicApp(QWidget):
-    def __init__(self):
+    def __init__(self, tiled_mode=False):
         super().__init__()
         self.config = load_config()
         self.is_playing = False
         self.is_looping = False
         self.track_finished = False
         self._drag_pos = None
+        self.tiled_mode = tiled_mode
 
         self.setup_window()
         self.setup_ui()
@@ -56,31 +149,54 @@ class MusicApp(QWidget):
         width = cfg.get("width", 270)
         height = cfg.get("height", 450)
 
-        self.setFixedSize(width, height)
-        self.setWindowTitle(cfg.get("title", "Lecteur de musique"))
+        # En mode tiled, ne pas fixer la taille !
+        if not self.tiled_mode:
+            self.setFixedSize(width, height)
+        else:
+            self.resize(width, height)
+            
+        self.setWindowTitle(cfg.get("title", "MusicPlayer"))
         bg_color = cfg.get("background_color", "#9141ac")
         self.setStyleSheet(f"background-color: {bg_color};")
 
-        self.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, True)
-        self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, False)
-        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        if not self.tiled_mode:
+            self.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, True)
+            self.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, False)
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
+        else:
+            self.setWindowFlag(Qt.WindowType.Window, True)
 
-        bg_path = cfg.get("background_image_path", "")
-        if bg_path and os.path.isfile(bg_path):
-            pixmap = QPixmap(bg_path).scaled(width, height, Qt.AspectRatioMode.KeepAspectRatioByExpanding)
-            self.bg_label = QLabel(self)
-            self.bg_label.setPixmap(pixmap)
-            self.bg_label.setGeometry(0, 0, width, height)
-            self.bg_label.lower()
-            self.bg_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        # BACKGROUND
+        self.bg_label = QLabel(self)
+        self.bg_label.setScaledContents(True)
+        self.bg_label.lower()
+        self.bg_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        
+        # Stocker le chemin du fond
+        self.bg_path = cfg.get("background_image_path", "")
+        
+        self.music_gif_label = QLabel(self)
+        self.music_gif_label.setScaledContents(True)
+        self.music_gif_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
+        border_color = bg_color
+        self.music_gif_label.setStyleSheet(f"""
+            border: 3px solid {border_color};
+            background-color: rgba(0, 0, 0, 0.3);
+        """)
+        self.music_gif_label.hide()
+        
+        self.music_gif_movie = None
+        self.bg_movie = None
 
+        self.update_background()
 
     def run_c_converter(self, mp4_file):
         print(f"Lancement du convertisseur C pour {mp4_file}...")
         try:
             subprocess.run(["./core/convert", mp4_file], check=True)
             print("Conversion terminée avec succès.")
-            self.reload_app() # On recharge pour voir le nouveau MP3
+            self.reload_playlist()
         except Exception as e:
             print(f"Erreur convertisseur C : {e}")
 
@@ -96,15 +212,10 @@ class MusicApp(QWidget):
 
         title_bar = QHBoxLayout()
         title_bar.setSpacing(5)
-
-        self.title = QLabel(" ")
-        self.title.setStyleSheet("color: white; font-size: 14px;")
-        self.title.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        title_bar.addWidget(self.title)
         title_bar.addStretch()
 
-        def create_btn_from_config(symbol, callback):
-            cfg = self.config.get("buttons", {}).get("rewind_backward", {})
+        def create_btn_from_config(symbol, callback, btn_name):
+            cfg = self.config.get("buttons", {}).get(btn_name, {})
             size = cfg.get("size", [30, 30])
             color = cfg.get("color", "#ffffff")
             text_color = cfg.get("text_color", "#000000")
@@ -112,7 +223,7 @@ class MusicApp(QWidget):
             border_radius = 8 if shape == "rounded" else 0
             image_path = cfg.get("image_path", "")
 
-            btn = QPushButton(symbol)
+            btn = AnimatedButton(symbol)
             btn.setFont(self.app_font)
             btn.setFixedSize(*size)
 
@@ -124,22 +235,25 @@ class MusicApp(QWidget):
             btn.clicked.connect(callback)
             return btn
 
-        self.config_button = create_btn_from_config("☼", self.launch_config_ui)
-        self.search_button = create_btn_from_config("♫", self.launch_research_ui)
-        self.reload_button = create_btn_from_config("⤷", self.reload_app)
-        self.btn_minimize = create_btn_from_config("—", self.showMinimized)
-        self.btn_close = create_btn_from_config("✕", self.close)
+        self.config_button = create_btn_from_config("☼", self.launch_config_ui, "config")
+        self.search_button = create_btn_from_config("♫", self.launch_research_ui, "search")
+        self.reload_button = create_btn_from_config("⤷", self.reload_playlist, "reload")
+        self.btn_minimize = create_btn_from_config("—", self.showMinimized, "minimize")
+        self.btn_close = create_btn_from_config("✕", self.close, "close")
 
         for btn in [self.config_button, self.search_button, self.reload_button, self.btn_minimize, self.btn_close]:
             title_bar.addWidget(btn)
         main_layout.addLayout(title_bar)
 
+        # PLAYLIST EN HAUT
         self.list_widget = QListWidget()
         self.list_widget.setFont(self.app_font)
         self.list_widget.clicked.connect(self.select_track)
+        self.list_widget.setMaximumHeight(80)
+        self.list_widget.setMinimumHeight(80)
+        
         pb_cfg = self.config.get("progress_bar", {})
         progress_bg_color = pb_cfg.get("background_color", "#350b4a")
-        
         
         self.list_widget.setStyleSheet(f"""
             QListWidget::item:selected {{
@@ -153,6 +267,26 @@ class MusicApp(QWidget):
         """)
         main_layout.addWidget(self.list_widget)
 
+        # MODE TILED : GIF après la playlist
+        if self.tiled_mode:
+            gif_container = QHBoxLayout()
+            gif_container.addStretch()
+            
+            self.gif_widget = QWidget()
+            self.gif_widget.setFixedSize(100, 100)
+            self.gif_widget.setStyleSheet("background: transparent;")
+            
+            self.music_gif_label.setParent(self.gif_widget)
+            self.music_gif_label.setGeometry(0, 0, 120, 120)
+            
+            gif_container.addWidget(self.gif_widget)
+            gif_container.addStretch()
+            main_layout.addLayout(gif_container)
+
+        # Spacer pour pousser le titre vers le bas
+        main_layout.addStretch()
+
+        # TITRE juste au-dessus des contrôles play
         self.track_label = QLabel("")
         self.track_label.setFont(self.app_font)
         self.track_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -162,7 +296,6 @@ class MusicApp(QWidget):
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 1000)
         self.progress_bar.setTextVisible(False)
-        pb_cfg = self.config.get("progress_bar", {})
         chunk_color = pb_cfg.get("color", "#d09dd2")
         bg_color = pb_cfg.get("background_color", "#350b4a")
         radius = pb_cfg.get("radius", 10)
@@ -182,7 +315,7 @@ class MusicApp(QWidget):
             text_color = self.config.get("buttons", {}).get("text_color", "#FFFFFF")
             border_radius = 8 if cfg.get("shape", "") == "rounded" else 0
             image_path = cfg.get("image_path", "")
-            btn = QPushButton(symbol)
+            btn = AnimatedButton(symbol)
             btn.setFont(self.app_font)
             btn.setFixedSize(*size)
             if image_path and os.path.isfile(image_path):
@@ -200,8 +333,6 @@ class MusicApp(QWidget):
         self.time_label.setFont(self.app_font)
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.time_label.setStyleSheet("color: white; background: transparent;")
-        
-        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.time_label.setFixedWidth(260) 
         time_layout.addWidget(self.time_label)
 
@@ -220,7 +351,7 @@ class MusicApp(QWidget):
         for btn in ["rewind", "play", "forward"]:
             controls.addWidget(self.buttons[btn])
         main_layout.addLayout(controls)
-# ----------------------------------------------------------------------------
+
         volume_layout = QHBoxLayout()
         self.volume_label = QLabel("🔈")
         self.volume_label.setFont(self.app_font)
@@ -261,10 +392,11 @@ class MusicApp(QWidget):
         volume_layout.addWidget(self.volume_slider)
         main_layout.addLayout(volume_layout)
 
-# ----------------------------------------------------------------------------
         self.visualizer = AudioVisualizer()
         self.visualizer.configure(self.config)
         main_layout.addWidget(self.visualizer)
+        
+        self.music_gif_label.raise_()
 
     def launch_config_ui(self):
         subprocess.Popen([sys.executable, "config_ui.py"])
@@ -272,9 +404,47 @@ class MusicApp(QWidget):
     def launch_research_ui(self):
         subprocess.Popen([sys.executable, "research.py"])
 
-    def reload_app(self):
-        subprocess.Popen([sys.executable, "main.py"])
-        QApplication.quit()
+    def reload_playlist(self):
+        """Recharge la playlist sans fermer l'application"""
+        print("🔄 Rechargement de la playlist...")
+        
+        # Sauvegarder l'état actuel
+        was_playing = self.is_playing
+        current_track = get_current_track_name()
+        
+        # Recharger la playlist
+        music_dir = os.path.join(os.getcwd(), "assets", "music")
+        load_playlist_from_folder(music_dir)
+        
+        # Mettre à jour l'affichage
+        self.list_widget.clear()
+        for path in playlist:
+            self.list_widget.addItem(os.path.basename(path))
+        
+        if playlist:
+            # Essayer de retrouver la piste actuelle
+            try:
+                current_path = os.path.join(music_dir, current_track) if current_track else None
+                if current_path and current_path in playlist:
+                    idx = playlist.index(current_path)
+                else:
+                    idx = 0
+            except (ValueError, TypeError):
+                idx = 0
+            
+            set_current_index(idx)
+            load_track_by_index(idx)
+            self.list_widget.setCurrentRow(idx)
+            self.update_track_label()
+            self.visualizer.load_audio(playlist[idx])
+            
+            # Reprendre la lecture si elle était en cours
+            if was_playing:
+                play_music()
+        else:
+            self.track_label.setText("Aucune musique trouvée")
+        
+        print("✅ Playlist rechargée")
 
     def load_music(self):
         music_dir = os.path.join(os.getcwd(), "assets", "music")
@@ -301,6 +471,8 @@ class MusicApp(QWidget):
             self.list_widget.setCurrentRow(idx)
         except ValueError:
             pass
+        
+        self.load_background_gif(name)
 
     def update_progress(self):
         pos = get_current_position_ms()
@@ -389,18 +561,17 @@ class MusicApp(QWidget):
         else:
             btn.setFixedSize(original_size.width() + 2, original_size.height() + 0)
 
-
     def on_volume_change(self, value):
         volume_float = value / 100
         set_volume(value / 100)
-        self.volume_label.setText("" if value > 0 else "")
+        self.volume_label.setText("🔊" if value > 0 else "🔇")
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
+        if not self.tiled_mode and event.button() == Qt.MouseButton.LeftButton:
             self._drag_pos = event.globalPosition()
 
     def mouseMoveEvent(self, event):
-        if self._drag_pos:
+        if not self.tiled_mode and self._drag_pos:
             diff = event.globalPosition() - self._drag_pos
             new_x = int(self.x() + diff.x())
             new_y = int(self.y() + diff.y())
@@ -410,9 +581,65 @@ class MusicApp(QWidget):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
 
+    def resizeEvent(self, event):
+        """Appelé quand la fenêtre est redimensionnée (mode tiled)"""
+        super().resizeEvent(event)
+        self.bg_label.setGeometry(0, 0, self.width(), self.height())
+        self.update_background()
+
+    def update_background(self):
+        """Met à jour le fond pour qu'il remplisse toute la fenêtre"""
+        if self.bg_path and os.path.isfile(self.bg_path):
+            width = self.width()
+            height = self.height()
+            
+            if self.bg_path.lower().endswith('.gif'):
+                if self.bg_movie:
+                    self.bg_movie.stop()
+                self.bg_movie = QMovie(self.bg_path)
+                self.bg_movie.setScaledSize(QSize(width, height))
+                self.bg_label.setMovie(self.bg_movie)
+                self.bg_movie.start()
+            else:
+                # ÉTIRER L'IMAGE pour remplir exactement la taille actuelle
+                pixmap = QPixmap(self.bg_path).scaled(
+                    width, 
+                    height,
+                    Qt.AspectRatioMode.IgnoreAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.bg_label.setPixmap(pixmap)
+
+    def load_background_gif(self, track_name):
+        if not track_name:
+            return
+        
+        base_name = os.path.splitext(track_name)[0]
+        gif_path = os.path.join(os.getcwd(), "assets", "music", f"{base_name}.gif")
+        
+        if os.path.isfile(gif_path):
+            if self.music_gif_movie:
+                self.music_gif_movie.stop()
+            
+            self.music_gif_movie = QMovie(gif_path)
+            self.music_gif_label.setMovie(self.music_gif_movie)
+            self.music_gif_movie.start()
+            self.music_gif_label.show()
+            self.music_gif_label.raise_()
+            
+            print(f"✅ GIF chargé : {gif_path}")
+        else:
+            if self.music_gif_movie:
+                self.music_gif_movie.stop()
+                self.music_gif_movie = None
+            self.music_gif_label.hide()
+            
+            print(f"⚠️ Pas de GIF trouvé pour : {track_name}")
+
 
 if __name__ == "__main__":
+    args = parse_args()
     pygame.mixer.init()
     app = QApplication(sys.argv)
-    window = MusicApp()
+    window = MusicApp(tiled_mode=args.tiled)
     sys.exit(app.exec())

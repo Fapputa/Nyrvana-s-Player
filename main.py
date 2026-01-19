@@ -15,7 +15,7 @@ from core.actions import (
     seek_to_position
 )
 from core.visualizer import AudioVisualizer
-import pygame  # Assure-toi que pygame est importé ici
+import pygame 
 
 
 def ms_to_mmss(ms: int) -> str:
@@ -73,6 +73,16 @@ class MusicApp(QWidget):
             self.bg_label.setGeometry(0, 0, width, height)
             self.bg_label.lower()
             self.bg_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+
+    def run_c_converter(self, mp4_file):
+        print(f"Lancement du convertisseur C pour {mp4_file}...")
+        try:
+            subprocess.run(["./core/convert", mp4_file], check=True)
+            print("Conversion terminée avec succès.")
+            self.reload_app() # On recharge pour voir le nouveau MP3
+        except Exception as e:
+            print(f"Erreur convertisseur C : {e}")
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
@@ -279,7 +289,7 @@ class MusicApp(QWidget):
             self.track_finished = False
             self.list_widget.setCurrentRow(0)
             self.update_track_label()
-            self.visualizer.load_audio(playlist[get_current_index()])
+            self.visualizer.load_audio(playlist[0])
         else:
             self.track_label.setText("Aucune musique trouvée")
 
@@ -330,7 +340,7 @@ class MusicApp(QWidget):
             load_track_by_index(i)
             self.track_finished = False
             self.update_track_label()
-            self.visualizer.load_audio(playlist[i])
+            self.visualizer.load_audio(playlist[i]) 
             if self.is_playing:
                 play_music()
 

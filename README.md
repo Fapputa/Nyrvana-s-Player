@@ -5,6 +5,9 @@ A modern, customizable music player built with PyQt6 and pygame, featuring real-
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
 
+
+![Main Player](assets/music.jpg)
+
 ## ✨ Features
 
 - **Custom Audio Visualizer**: Built from scratch (pydub is no longer supported in Python 3.14+)

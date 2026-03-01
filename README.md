@@ -3,7 +3,7 @@
 A modern, customizable music player built with PyQt6 and pygame, featuring real-time audio visualization and integrated YouTube downloader with automatic MP3/GIF conversion.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)
+![Python](https://img.shields.io/badge/python-3.14%2B-blue.svg)
 
 
 ![Main Player](assets/music.jpg)
